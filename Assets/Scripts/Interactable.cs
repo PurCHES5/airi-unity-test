@@ -4,35 +4,38 @@ using UnityEngine;
 public class Interactable : MonoBehaviour
 {
     [Header("Animation")]
-    [SerializeField]
-    AnimationClip enterAnimationClip;
+    [SerializeField] AnimationClip enterAnimationClip;
+
+    // Optional: loops while the character is seated.
+    // If null with no exitClip, enterClip is treated as a pure one-shot.
+    [SerializeField] AnimationClip idleAnimationClip;
+
+    // Optional: played when the character stands up.
+    // Requires idleAnimationClip to be set (or is skipped).
+    [SerializeField] AnimationClip exitAnimationClip;
 
     [Header("Snap Point")]
-    [SerializeField]
-    Transform snapPoint;   // where character should sit
+    [SerializeField] Transform snapPoint;
 
-    public AnimationClip GetEnterAnimationClip()
-        => enterAnimationClip;
+    public AnimationClip GetEnterAnimationClip() => enterAnimationClip;
+    public AnimationClip GetIdleAnimationClip()  => idleAnimationClip;
+    public AnimationClip GetExitAnimationClip()  => exitAnimationClip;
+    public Transform     GetSnapPoint()          => snapPoint;
 
-    public Transform GetSnapPoint()
-        => snapPoint;
-
-    CharacterController characterController;
+    CharacterController occupant;
 
     void OnTriggerEnter(Collider other)
     {
-        if (other.TryGetComponent(out characterController))
-        {
-            characterController.OnEnterInteractable(this);
-        }
+        if (other.TryGetComponent(out occupant))
+            occupant.OnEnterInteractable(this);
     }
 
     void OnTriggerExit(Collider other)
     {
-        if (other.TryGetComponent(out characterController))
+        if (other.TryGetComponent(out occupant))
         {
-            characterController.OnExitInteractable(this);
-            characterController = null;
+            occupant.OnExitInteractable(this);
+            occupant = null;
         }
     }
 }

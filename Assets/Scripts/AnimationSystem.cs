@@ -1,141 +1,195 @@
 using System;
-using System.Collections.Generic;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.Animations;
 using UnityEngine.Playables;
-using MEC; // Uses More Effective Coroutines from the Unity Asset Store
 
-public class AnimationSystem {
-    PlayableGraph playableGraph;
+public class AnimationSystem
+{
+    readonly PlayableGraph playableGraph;
     readonly AnimationMixerPlayable topLevelMixer;
     readonly AnimationMixerPlayable locomotionMixer;
-    
-    AnimationClipPlayable oneShotPlayable;
-    
-    CoroutineHandle blendInHandle;
-    CoroutineHandle blendOutHandle;
-    CoroutineHandle oneShotHandle;
+    readonly MonoBehaviour host;
 
-    public AnimationSystem(Animator animator, AnimationClip idleClip, AnimationClip walkClip) {
+    AnimationClipPlayable oneShotPlayable;
+
+    Coroutine blendInCoroutine;
+    Coroutine blendOutCoroutine;
+    Coroutine oneShotCoroutine;
+
+    // Current weight of the action layer, or 0 if nothing is connected.
+    float ActionLayerWeight =>
+        oneShotPlayable.IsValid() ? topLevelMixer.GetInputWeight(1) : 0f;
+
+    public AnimationSystem(
+        MonoBehaviour host,
+        Animator animator,
+        AnimationClip idleClip,
+        AnimationClip walkClip)
+    {
+        this.host = host;
+
         playableGraph = PlayableGraph.Create("AnimationSystem");
-        
-        AnimationPlayableOutput playableOutput = AnimationPlayableOutput.Create(playableGraph, "Animation", animator);
-        
+
+        var output = AnimationPlayableOutput.Create(playableGraph, "Animation", animator);
+
         topLevelMixer = AnimationMixerPlayable.Create(playableGraph, 2);
-        playableOutput.SetSourcePlayable(topLevelMixer);
-        
+        output.SetSourcePlayable(topLevelMixer);
+
         locomotionMixer = AnimationMixerPlayable.Create(playableGraph, 2);
         topLevelMixer.ConnectInput(0, locomotionMixer, 0);
-        playableGraph.GetRootPlayable(0).SetInputWeight(0, 1f);
-        
-        AnimationClipPlayable idlePlayable = AnimationClipPlayable.Create(playableGraph, idleClip);
-        AnimationClipPlayable walkPlayable = AnimationClipPlayable.Create(playableGraph, walkClip);
-        
+        topLevelMixer.SetInputWeight(0, 1f);
+
+        var idlePlayable = AnimationClipPlayable.Create(playableGraph, idleClip);
+        var walkPlayable = AnimationClipPlayable.Create(playableGraph, walkClip);
+
         idlePlayable.GetAnimationClip().wrapMode = WrapMode.Loop;
         walkPlayable.GetAnimationClip().wrapMode = WrapMode.Loop;
-        
+
         locomotionMixer.ConnectInput(0, idlePlayable, 0);
         locomotionMixer.ConnectInput(1, walkPlayable, 0);
-        
+
         playableGraph.Play();
     }
 
-    public void UpdateLocomotion(Vector3 velocity, float maxSpeed) {
-        float weight = Mathf.InverseLerp(0f, maxSpeed, velocity.magnitude);
-        locomotionMixer.SetInputWeight(0, 1f - weight);
-        locomotionMixer.SetInputWeight(1, weight);
+    public void UpdateLocomotion(Vector3 velocity, float maxSpeed)
+    {
+        float w = Mathf.InverseLerp(0f, maxSpeed, velocity.magnitude);
+        locomotionMixer.SetInputWeight(0, 1f - w);
+        locomotionMixer.SetInputWeight(1, w);
     }
 
-    public void PlayOneShot(AnimationClip oneShotClip, Action onFinished)
+    // ── One-shot ──────────────────────────────────────────────────────────────
+    // Blends in from the current action-layer weight and plays once.
+    // Does NOT auto-blend back to locomotion — the caller decides what comes
+    // next via onFinished (e.g. PlayLooping, StopActionLayer, another PlayOneShot).
+
+    public void PlayOneShot(AnimationClip clip, Action onFinished)
     {
-        if (oneShotPlayable.IsValid() && oneShotPlayable.GetAnimationClip() == oneShotClip) return;
+        if (oneShotPlayable.IsValid() && oneShotPlayable.GetAnimationClip() == clip)
+            return;
 
-        InterruptOneShot();
+        float startWeight = ActionLayerWeight;  // snapshot BEFORE any disruption
 
-        oneShotPlayable = AnimationClipPlayable.Create(playableGraph, oneShotClip);
-        topLevelMixer.ConnectInput(1, oneShotPlayable, 0);
-        topLevelMixer.SetInputWeight(1, 1f);
+        KillCoroutines();
+        SwapPlayable(clip);
 
-        float clipLength = oneShotClip.length;
-        float blendDuration = Mathf.Clamp(clipLength * 0.1f, 0.1f, clipLength * 0.5f);
+        float blendDur = Mathf.Clamp(clip.length * 0.1f, 0.1f, clip.length * 0.5f);
 
-        BlendIn(blendDuration);
-        BlendOut(blendDuration, clipLength - blendDuration);
+        if (startWeight < 0.99f)
+            BlendIn(blendDur, startWeight);
 
-        // 2. Run MEC Coroutine and store the handle
-        oneShotHandle = Timing.RunCoroutine(MonitorAnimation(clipLength, onFinished));
+        oneShotCoroutine = host.StartCoroutine(
+            MonitorOneShot(clip.length, onFinished));
     }
 
-    IEnumerator<float> MonitorAnimation(float duration, Action onFinished)
+    IEnumerator MonitorOneShot(float duration, Action onFinished)
     {
-        yield return Timing.WaitForSeconds(duration);
-
-        // Cleanup Playable
-        if (oneShotPlayable.IsValid())
-        {
-            topLevelMixer.DisconnectInput(1);
-            oneShotPlayable.Destroy();
-        }
-
-        // 3. Execute the callback
+        yield return new WaitForSeconds(duration);
+        // Don't touch the playable or weights here.
+        // SwapPlayable (next clip) or StopActionLayer (back to loco) will clean up.
         onFinished?.Invoke();
     }
 
-    void BlendIn(float duration)
+    // ── Looping action layer ──────────────────────────────────────────────────
+    // Swaps in a looping clip at the current weight, blending in if below full.
+
+    public void PlayLooping(AnimationClip clip, float blendDuration = 0.2f)
     {
-        blendInHandle = Timing.RunCoroutine(Blend(duration, blendTime => {
-            float weight = Mathf.Lerp(1f, 0f, blendTime);
-            topLevelMixer.SetInputWeight(0, weight);
-            topLevelMixer.SetInputWeight(1, 1f - weight);
-        }));
-    }
-    
-    void BlendOut(float duration, float delay) {
-        blendOutHandle = Timing.RunCoroutine(Blend(duration, blendTime => {
-            float weight = Mathf.Lerp(0f, 1f, blendTime);
-            topLevelMixer.SetInputWeight(0, weight);
-            topLevelMixer.SetInputWeight(1, 1f - weight);
-        }, delay, DisconnectOneShot));
+        float startWeight = ActionLayerWeight;
+
+        KillCoroutines();
+        SwapPlayable(clip);
+
+        if (startWeight < 0.99f)
+            BlendIn(blendDuration, startWeight);
+        // Already at full weight → clip swaps with no visible transition needed.
     }
 
-    IEnumerator<float> Blend(float duration, Action<float> blendCallback, float delay = 0f, Action finishedCallback = null) {
-        if (delay > 0f) {
-            yield return Timing.WaitForSeconds(delay);
+    // ── Stop action layer ─────────────────────────────────────────────────────
+    // Blends the action layer back to 0, then disconnects the playable.
+
+    public void StopActionLayer(float blendDuration = 0.3f, Action onFinished = null)
+    {
+        float startWeight = ActionLayerWeight;
+
+        KillCoroutines();
+
+        blendOutCoroutine = host.StartCoroutine(BlendCoroutine(
+            blendDuration,
+            t => {
+                float w = Mathf.Lerp(startWeight, 0f, t);
+                topLevelMixer.SetInputWeight(0, 1f - w);
+                topLevelMixer.SetInputWeight(1, w);
+            },
+            () => {
+                if (oneShotPlayable.IsValid())
+                    DisconnectAndDestroyOneShot();
+                onFinished?.Invoke();
+            }
+        ));
+    }
+
+    // ── Internals ─────────────────────────────────────────────────────────────
+
+    // Replaces the clip on slot 1 while preserving the current blend weights,
+    // so there is never a frame where the locomotion layer snaps to full weight.
+    void SwapPlayable(AnimationClip clip)
+    {
+        float w = topLevelMixer.GetInputWeight(1);
+
+        if (oneShotPlayable.IsValid())
+            DisconnectAndDestroyOneShot();
+
+        oneShotPlayable = AnimationClipPlayable.Create(playableGraph, clip);
+        topLevelMixer.ConnectInput(1, oneShotPlayable, 0);
+        topLevelMixer.SetInputWeight(0, 1f - w);
+        topLevelMixer.SetInputWeight(1, w);
+    }
+
+    void BlendIn(float duration, float fromWeight)
+    {
+        blendInCoroutine = host.StartCoroutine(BlendCoroutine(
+            duration,
+            t => {
+                float w = Mathf.Lerp(fromWeight, 1f, t);
+                topLevelMixer.SetInputWeight(0, 1f - w);
+                topLevelMixer.SetInputWeight(1, w);
+            }
+        ));
+    }
+
+    IEnumerator BlendCoroutine(float duration, Action<float> onBlend, Action onFinished = null)
+    {
+        float t = 0f;
+        while (t < 1f)
+        {
+            t += Time.deltaTime / duration;
+            onBlend(Mathf.Clamp01(t));
+            yield return null;
         }
-        
-        float blendTime = 0f;
-        while (blendTime < 1f) {
-            blendTime += Time.deltaTime / duration;
-            blendCallback(blendTime);
-            yield return blendTime;
-        }
-        
-        blendCallback(1f);
-        
-        finishedCallback?.Invoke();
+        onBlend(1f);
+        onFinished?.Invoke();
     }
 
-    void InterruptOneShot() {
-        Timing.KillCoroutines(blendInHandle);
-        Timing.KillCoroutines(blendOutHandle);
-        Timing.KillCoroutines(oneShotHandle);
-        
-        topLevelMixer.SetInputWeight(0, 1f);
-        topLevelMixer.SetInputWeight(1, 0f);
-
-        if (oneShotPlayable.IsValid()) {
-            DisconnectOneShot();
-        }
+    void KillCoroutines()
+    {
+        if (blendInCoroutine  != null) host.StopCoroutine(blendInCoroutine);
+        if (blendOutCoroutine != null) host.StopCoroutine(blendOutCoroutine);
+        if (oneShotCoroutine  != null) host.StopCoroutine(oneShotCoroutine);
+        blendInCoroutine = blendOutCoroutine = oneShotCoroutine = null;
     }
 
-    void DisconnectOneShot() {
+    void DisconnectAndDestroyOneShot()
+    {
         topLevelMixer.DisconnectInput(1);
         playableGraph.DestroyPlayable(oneShotPlayable);
     }
 
-    public void Destroy() {
-        if (playableGraph.IsValid()) {
+    public void Destroy()
+    {
+        KillCoroutines();
+        if (playableGraph.IsValid())
             playableGraph.Destroy();
-        }
     }
 }
