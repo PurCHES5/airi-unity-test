@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: b7f493d92730bd34b9486e8c93a8992e
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 316385
+  packageName: 'WARP Lite: Free Rapid Prototyping Pack'
+  packageVersion: 1.0
+  assetPath: Assets/WARP Lite/Editor/MassSetMaterialsEditor.cs
+  uploadId: 746734

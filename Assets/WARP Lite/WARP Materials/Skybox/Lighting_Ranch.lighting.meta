@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: eb41fa440c3f06445a7c08addce5ff19
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 4890085278179872738
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 316385
+  packageName: 'WARP Lite: Free Rapid Prototyping Pack'
+  packageVersion: 1.0
+  assetPath: Assets/WARP Lite/WARP Materials/Skybox/Lighting_Ranch.lighting
+  uploadId: 746734

@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 9894987e63267954ab67c0bc9bc361ba
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 4890085278179872738
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 316385
+  packageName: 'WARP Lite: Free Rapid Prototyping Pack'
+  packageVersion: 1.0
+  assetPath: Assets/WARP Lite/Rendering Presets/Lighting/Lighting_Facility.lighting
+  uploadId: 746734

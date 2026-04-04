@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 28c1ebda61d41b8459c7dd5f9e39f277
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 316385
+  packageName: 'WARP Lite: Free Rapid Prototyping Pack'
+  packageVersion: 1.0
+  assetPath: Assets/WARP Lite/Prefabs/Primitives/CylinderA.prefab
+  uploadId: 746734
