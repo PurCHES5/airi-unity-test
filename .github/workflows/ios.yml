@@ -1,0 +1,46 @@
+name: Unity iOS Build
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install certificate
+        run: |
+          echo "$IOS_CERTIFICATE" | base64 --decode > cert.p12
+          security create-keychain -p temp build.keychain
+          security import cert.p12 \
+            -k build.keychain \
+            -P "$CERT_PASSWORD" \
+            -T /usr/bin/codesign
+
+      - name: Install provisioning profile
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$IOS_PROVISION_PROFILE" | base64 --decode \
+          > ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
+
+      - name: Build
+        run: |
+          cd ios-build
+          xcodebuild \
+            -workspace Unity-iPhone.xcworkspace \
+            -scheme Unity-iPhone \
+            -sdk iphoneos \
+            archive \
+            -archivePath build.xcarchive
+
+      - name: Export IPA
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath build.xcarchive \
+            -exportOptionsPlist ExportOptions.plist \
+            -exportPath build
