@@ -1,48 +1,94 @@
-name: Build Unity project
+name: Unity iOS Build Pipeline
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - main
 
 jobs:
-  build:
-    name: Build project
-    runs-on: ubuntu-latest
+
+  unity-build:
+    name: Build Unity iOS Project
+    runs-on: macos-latest
+
     steps:
-      # Checkout
+
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          lfs: true
 
-      # Cache
-      - uses: actions/cache@v3
+      - name: Cache Unity Library
+        uses: actions/cache@v3
         with:
           path: Library
-          key: Library-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
-          restore-keys: |
-            Library-
+          key: Library-${{ runner.os }}
 
-      # Test
-      - name: Run tests
-        uses: game-ci/unity-test-runner@v4
-        env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-        with:
-          githubToken: ${{ secrets.GITHUB_TOKEN }}
-
-      # Build
-      - name: Build project
+      - name: Build iOS project
         uses: game-ci/unity-builder@v4
-        env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
           targetPlatform: iOS
 
-      # Output
-      - uses: actions/upload-artifact@v4
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+
+      - name: Upload iOS build
+        uses: actions/upload-artifact@v4
         with:
-          name: Build
-          path: build
+          name: ios-build
+          path: build/iOS
+
+
+  xcode-build:
+    name: Build IPA with Xcode
+    runs-on: macos-latest
+    needs: unity-build
+
+    steps:
+
+      - name: Download Unity build
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-build
+
+      - name: Install certificate
+        run: |
+          echo "$IOS_CERTIFICATE" | base64 --decode > cert.p12
+
+          security create-keychain -p temp build.keychain
+
+          security import cert.p12 \
+            -k build.keychain \
+            -P "$CERT_PASSWORD" \
+            -T /usr/bin/codesign
+
+      - name: Install provisioning profile
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+
+          echo "$IOS_PROVISION_PROFILE" | base64 --decode \
+            > ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
+
+      - name: Build archive
+        run: |
+          cd iOS
+
+          xcodebuild \
+            -workspace Unity-iPhone.xcworkspace \
+            -scheme Unity-iPhone \
+            -sdk iphoneos \
+            archive \
+            -archivePath build.xcarchive
+
+      - name: Export IPA
+        run: |
+          xcodebuild \
+            -exportArchive \
+            -archivePath build.xcarchive \
+            -exportOptionsPlist ExportOptions.plist \
+            -exportPath build
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: iOS/build
