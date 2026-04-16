@@ -7,7 +7,7 @@ on:
 
 jobs:
 
-  unity-build:
+  unity-ios-build:
     name: Build Unity iOS Project
     runs-on: macos-latest
 
@@ -37,3 +37,34 @@ jobs:
         with:
           name: ios-build
           path: build/iOS
+
+  unity-android-build:
+    name: Build Unity Android Project
+    runs-on: macos-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache Unity Library
+        uses: actions/cache@v3
+        with:
+          path: Library
+          key: Library-${{ runner.os }}
+
+      - name: Build Android project
+        uses: game-ci/unity-builder@v4
+        with:
+          targetPlatform: Android
+
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+
+      - name: Upload Android build
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build
+          path: build/Android
