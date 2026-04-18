@@ -42,11 +42,11 @@ public class UnityBridge : MonoBehaviour
     public void SendToVue(string eventName, string data)
     {
 #if UNITY_IOS
-        NativeBridge.SendToCapacitor(eventName, data);
+        //NativeBridge.SendToCapacitor(eventName, data);
 #elif UNITY_ANDROID
-        using var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
-        var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
-        activity.Call("sendToCapacitor", eventName, data);
+        //using var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
+        //var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
+        //activity.Call("sendToCapacitor", eventName, data);
 #endif
     }
 }

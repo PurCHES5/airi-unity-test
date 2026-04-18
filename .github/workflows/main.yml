@@ -7,7 +7,7 @@ on:
 
 jobs:
 
-  unity-build:
+  unity-ios-build:
     name: Build Unity iOS Project
     runs-on: macos-latest
 
@@ -37,58 +37,33 @@ jobs:
           name: ios-build
           path: build/iOS
 
-
-  xcode-build:
-    name: Build IPA with Xcode
-    runs-on: macos-latest
-    needs: unity-build
+  unity-android-build:
+    name: Build Unity Android Project
+    runs-on: ubuntu-latest
 
     steps:
 
-      - name: Download Unity build
-        uses: actions/download-artifact@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache Unity Library
+        uses: actions/cache@v3
         with:
-          name: ios-build
+          path: Library
+          key: Library-${{ runner.os }}
 
-      - name: Install certificate
-        run: |
-          echo "$IOS_CERTIFICATE" | base64 --decode > cert.p12
+      - name: Build Android project
+        uses: game-ci/unity-builder@v4
+        with:
+          targetPlatform: Android
 
-          security create-keychain -p temp build.keychain
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
 
-          security import cert.p12 \
-            -k build.keychain \
-            -P "$CERT_PASSWORD" \
-            -T /usr/bin/codesign
-
-      - name: Install provisioning profile
-        run: |
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-
-          echo "$IOS_PROVISION_PROFILE" | base64 --decode \
-            > ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
-
-      - name: Build archive
-        run: |
-          cd iOS
-
-          xcodebuild \
-            -workspace Unity-iPhone.xcworkspace \
-            -scheme Unity-iPhone \
-            -sdk iphoneos \
-            archive \
-            -archivePath build.xcarchive
-
-      - name: Export IPA
-        run: |
-          xcodebuild \
-            -exportArchive \
-            -archivePath build.xcarchive \
-            -exportOptionsPlist ExportOptions.plist \
-            -exportPath build
-
-      - name: Upload IPA
+      - name: Upload Android build
         uses: actions/upload-artifact@v4
         with:
-          name: ios-ipa
-          path: iOS/build
+          name: android-build
+          path: build/Android
