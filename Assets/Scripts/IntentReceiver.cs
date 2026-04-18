@@ -4,7 +4,7 @@ using UnityEngine;
 public class IntentReceiver : MonoBehaviour
 {   
     [SerializeField]
-    TextMeshPro testText;
+    TextMeshProUGUI testText;
 
     // This method name must match the one in your Swift code
     public void ReceiveMessageFromIntent(string message)
